@@ -39,28 +39,23 @@ fn contains_multiple_repetition(num: u64) -> bool {
     false
 }
 
-pub fn part_1(input: String) -> u64 {
-    let ranges = parse(input);
-    let mut sum: u64 = 0;
-    for r in ranges {
+fn loop_on_the_ranges(ranges: Vec<Range>, f: fn(u64) -> bool) -> u64 {
+    ranges.iter().fold(0, |mut acc, r| {
         for i in r.from..r.to + 1 {
-            if contains_repetition(i as u64) {
-                sum = sum + i as u64;
+            if f(i as u64) {
+                acc = acc + i as u64;
             }
         }
-    }
-    sum
+        acc
+    })
+}
+
+pub fn part_1(input: String) -> u64 {
+    let ranges = parse(input);
+    loop_on_the_ranges(ranges, contains_repetition)
 }
 
 pub fn part_2(input: String) -> u64 {
     let ranges = parse(input);
-    let mut sum: u64 = 0;
-    for r in ranges {
-        for i in r.from..r.to + 1 {
-            if contains_multiple_repetition(i as u64) {
-                sum = sum + i as u64;
-            }
-        }
-    }
-    sum
+    loop_on_the_ranges(ranges, contains_multiple_repetition)
 }
