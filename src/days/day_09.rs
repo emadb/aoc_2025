@@ -84,7 +84,8 @@ pub fn part_2(input: String) -> i64 {
             let (x2, y2) = coords[j];
             let this_area = (x2 - x1 + 1).abs() * (y2 - y1 + 1).abs();
             if is_valid_rect(x1, y1, x2, y2, &lines) && this_area > area {
-                area = this_area
+                println!("x1={} y1={} x2={} y2={} area={}", x1, y1, x2, y2, this_area);
+                area = this_area;
             }
         }
     }

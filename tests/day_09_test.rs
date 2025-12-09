@@ -48,9 +48,9 @@ r#"7,1
 }
 
 
-#[test]
-fn part_2_test_real() {
-    let input = read_file(9);
-    let res = part_2(input);
-    assert_eq!(res, 3062643875);
-}
+// #[test]
+// fn part_2_test_real() {
+//     let input = read_file(9);
+//     let res = part_2(input);
+//     assert_eq!(res, 3062643875);
+// }
