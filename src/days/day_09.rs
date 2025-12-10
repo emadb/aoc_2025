@@ -1,5 +1,3 @@
-use std::cmp;
-
 fn parse(input: String) -> Vec<(i64, i64)> {
     let coords = input
         .lines()
@@ -30,18 +28,27 @@ pub fn part_1(input: String) -> i64 {
     area
 }
 
-fn ccw(a: (i64, i64), b: (i64, i64), c: (i64, i64)) -> bool {
-    (c.1 - a.1) * (b.0 - a.0) > (b.1 - a.1) * (c.0 - a.0)
+fn intersect((ax1, ay1): (i64, i64), (ax2, ay2): (i64, i64), (bx1, by1): (i64, i64), (bx2, by2): (i64, i64)) -> bool {
+    let min_x = ax1.min(ax2);
+    let max_x = ax1.max(ax2);
+
+    let min_y = ay1.min(ay2);
+    let max_y = ay1.max(ay2);
+
+    let mix_px = bx1.min(bx2);
+    let max_px = bx1.max(bx2);
+
+    let min_py = by1.min(by2);
+    let max_py = by1.max(by2);
+
+    max_px > min_x && mix_px < max_x && max_py > min_y && min_py < max_y
 }
+
 
 fn is_valid_rect(x1: i64, y1: i64, x2: i64, y2: i64, lines: &Vec<Line>) -> bool {
     let mut overlap = false;
     for l in lines {
-        overlap = ccw((x1, y1), (l.from.0, l.from.1), (l.to.0, l.to.1)) != ccw((x2, y2), (l.from.0, l.from.1), (l.to.0, l.to.1))
-            && ccw((x1, y1), (x2, y2), (l.from.0, l.from.1)) != ccw((x1, y1), (x2, y2), (l.to.0, l.to.1));
-
-        // println!("x1=({}, {}) x2=({}, {}) from=({},{}) to=({},{}) => {}", x1, y1, x2, y2, l.from.0, l.from.1, l.to.0, l.to.1, overlap);
-
+        overlap = intersect((x1, y1), (x2, y2), l.from, l.to);
         if overlap {
             break;
         }
@@ -66,9 +73,9 @@ fn build_vertex(coords: &Vec<(i64, i64)>) -> Vec<Line> {
         lines.push(line)
     }
     lines.push(Line {
-         from: *coords.last().unwrap(),
-         to: coords[0],
-     });
+        from: *coords.last().unwrap(),
+        to: coords[0],
+    });
     lines
 }
 
@@ -82,9 +89,11 @@ pub fn part_2(input: String) -> i64 {
         for j in 1..coords.len() {
             let (x1, y1) = coords[i];
             let (x2, y2) = coords[j];
-            let this_area = (x2 - x1 + 1).abs() * (y2 - y1 + 1).abs();
+            let width = (x1 - x2).abs() + 1;
+            let height = (y1 - y2).abs() + 1;
+            let this_area = width * height;
+
             if is_valid_rect(x1, y1, x2, y2, &lines) && this_area > area {
-                println!("x1={} y1={} x2={} y2={} area={}", x1, y1, x2, y2, this_area);
                 area = this_area;
             }
         }
