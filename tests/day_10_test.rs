@@ -39,5 +39,5 @@ r#"[.##.] (3) (1,3) (2) (2,3) (0,2) (0,1) {3,5,4,7}
 fn part_2_test_real() {
     let input = read_file(10);
     let res = part_2(input);
-    assert_eq!(res, 486);
+    assert_eq!(res, 16900);
 }

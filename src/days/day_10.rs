@@ -11,13 +11,6 @@ struct Machine {
     joltage: Vec<u32>
 }
 impl Machine {
-    // fn press_index(&mut self, btn_index: usize) {
-    //     self.lights = self.lights ^ self.buttons[btn_index] as u32;
-
-    // }
-    // fn press(&mut self, btn: u8) {
-    //     self.lights = self.lights ^ btn as u32;
-    // }
 
     fn apply(&mut self, lights: u32,  btn: u32) {
         self.lights = lights ^ btn as u32;
@@ -117,49 +110,6 @@ fn find_lights(machine: &mut Machine) -> u32 {
     0
 
 }
-fn are_equal(one: &Vec<u32>, two: &Vec<u32>) -> bool {
-    if one.len() != two.len() {
-        return false;
-    }
-    for i in 0..one.len() {
-        if one[i] != two[i] {
-            return false;
-        }
-    }
-    return true;
-}
-
-fn find_joltages(machine: &mut Machine) -> u32 {
-    let mut visited: HashSet<Vec<u32>> = HashSet::new();
-    let mut joltage_queue: VecDeque<(Vec<u32>, u32)> = VecDeque::new();
-    joltage_queue.push_back((machine.joltage.clone(), 0));
-
-    while !joltage_queue.is_empty() {
-        let (current_joltage, count) = joltage_queue.pop_front().unwrap();
-        if are_equal(&current_joltage, &machine.target_joltage) {
-            return count;
-        }
-
-        for btn in &machine.buttons_vec.clone() {
-            machine.apply_j(&current_joltage, btn.clone());
-            if !visited.contains(&machine.joltage.clone()) && is_valid(machine) {
-                joltage_queue.push_back((machine.joltage.clone(), count + 1));
-                visited.insert(machine.joltage.clone());
-            }
-        }
-    }
-    0
-
-}
-
-fn is_valid(machine: &mut Machine) -> bool {
-    for i in 0..machine.joltage.len() {
-        if machine.joltage[i] > machine.target_joltage[i] {
-            return false
-        }
-    }
-    return true;
-}
 
 pub fn part_1(input: String) -> i64 {
     let machines = parse(input);
@@ -172,14 +122,171 @@ pub fn part_1(input: String) -> i64 {
     sum as i64
 }
 
+// ###################
+fn gaussian_elimination(matrix: &mut Vec<Vec<f64>>) {
+    let rows = matrix.len();
+    if rows == 0 { return; }
+    let cols = matrix[0].len();
+
+    let mut pivot_row = 0;
+
+    for col in 0..cols {
+        if pivot_row >= rows { break; }
+
+        // 1. Pivot Selection
+        let mut max_row = pivot_row;
+        for i in (pivot_row + 1)..rows {
+            if matrix[i][col].abs() > matrix[max_row][col].abs() {
+                max_row = i;
+            }
+        }
+
+        if matrix[max_row][col].abs() < 1e-9 { continue; }
+
+        matrix.swap(pivot_row, max_row);
+
+        // 2. Normalize
+        let pivot_val = matrix[pivot_row][col];
+        for j in col..cols {
+            matrix[pivot_row][j] /= pivot_val;
+        }
+
+        // 3. Eliminate
+        for i in 0..rows {
+            if i != pivot_row {
+                let factor = matrix[i][col];
+                for j in col..cols {
+                    matrix[i][j] -= factor * matrix[pivot_row][j];
+                }
+            }
+        }
+        pivot_row += 1;
+    }
+}
+
+fn convert_to_matrix(machine: &Machine) -> Vec<Vec<f64>> {
+    let num_rows = machine.target_joltage.len();
+    let num_buttons = machine.buttons_vec.len();
+
+    let mut matrix = vec![vec![0.0; num_buttons + 1]; num_rows];
+
+    for (col_idx, affected_counters) in machine.buttons_vec.iter().enumerate() {
+        for &row_idx in affected_counters {
+            if (row_idx as usize) < num_rows {
+                matrix[row_idx as usize][col_idx] = 1.0;
+            }
+        }
+    }
+
+    for (row_idx, &target) in machine.target_joltage.iter().enumerate() {
+        matrix[row_idx][num_buttons] = target as f64;
+    }
+
+    matrix
+}
+
+fn solve_recursive(
+    current_free_idx: usize,
+    free_cols: &Vec<usize>,
+    pivot_map: &Vec<(usize, usize)>,
+    current_solution: &mut Vec<f64>,
+    matrix: &Vec<Vec<f64>>,
+    min_presses: &mut Option<i64>
+) {
+    if current_free_idx == free_cols.len() {
+        let mut valid = true;
+
+        for &(row, col) in pivot_map {
+            let target = matrix[row].last().unwrap();
+            let mut val = *target;
+
+            for &fc in free_cols {
+                val -= matrix[row][fc] * current_solution[fc];
+            }
+
+            if val < -1e-5 || (val.round() - val).abs() > 1e-5 {
+                valid = false;
+                break;
+            }
+            current_solution[col] = val.round();
+        }
+
+        if valid {
+            let sum: i64 = current_solution.iter().map(|&x| x as i64).sum();
+            match min_presses {
+                None => *min_presses = Some(sum),
+                Some(min) => if sum < *min { *min_presses = Some(sum); }
+            }
+        }
+        return;
+    }
+
+    let col_idx = free_cols[current_free_idx];
+
+    for val in 0..=100 {
+        current_solution[col_idx] = val as f64;
+        solve_recursive(
+            current_free_idx + 1,
+            free_cols,
+            pivot_map,
+            current_solution,
+            matrix,
+            min_presses
+        );
+    }
+}
+
+fn solve_system(mut matrix: Vec<Vec<f64>>) -> Option<i64> {
+    gaussian_elimination(&mut matrix);
+
+    let rows = matrix.len();
+    let cols = matrix[0].len();
+    let num_vars = cols - 1;
+
+    let mut pivot_cols = Vec::new();
+    let mut pivot_map = Vec::new();
+
+    for r in 0..rows {
+        if let Some(c) = matrix[r][0..num_vars].iter().position(|&x| (x - 1.0).abs() < 1e-5) {
+            pivot_cols.push(c);
+            pivot_map.push((r, c));
+        }
+    }
+
+    let mut free_cols = Vec::new();
+    for c in 0..num_vars {
+        if !pivot_cols.contains(&c) {
+            free_cols.push(c);
+        }
+    }
+
+    let mut min_presses = None;
+    let mut current_solution = vec![0.0; num_vars];
+
+    solve_recursive(
+        0,
+        &free_cols,
+        &pivot_map,
+        &mut current_solution,
+        &matrix,
+        &mut min_presses
+    );
+
+    min_presses
+}
+
+// ###################
+
 pub fn part_2(input: String) -> i64 {
     let machines = parse(input);
 
     let mut sum = 0;
-    for mut m in machines {
-        let r = find_joltages(&mut m);
-        println!("> {}", r);
-        sum += r;
+    for m in machines {
+        let matrix = convert_to_matrix(&m);
+
+        if let Some(presses) = solve_system(matrix) {
+            sum += presses;
+        }
     }
     sum as i64
 }
