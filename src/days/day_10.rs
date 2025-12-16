@@ -7,7 +7,7 @@ struct Machine {
     target_lights: u32,
     buttons: Vec<u32>,
     buttons_vec: Vec<Vec<u32>>,
-    target_joltage: Vec<u32>,
+    target_joltage: Vec<i32>,
     joltage: Vec<u32>
 }
 impl Machine {
@@ -58,9 +58,9 @@ fn parse_buttons_vec(l: &[&str]) -> Vec<Vec<u32>> {
     .collect()
 }
 
-fn parse_joltage(j: &str) -> Vec<u32> {
+fn parse_joltage(j: &str) -> Vec<i32> {
     j.strip_prefix("{").unwrap().strip_suffix("}").unwrap().split(",").map(|jj| {
-        jj.parse::<u32>().unwrap()
+        jj.parse::<i32>().unwrap()
     }).collect()
 }
 
@@ -122,171 +122,79 @@ pub fn part_1(input: String) -> i64 {
     sum as i64
 }
 
-// ###################
-fn gaussian_elimination(matrix: &mut Vec<Vec<f64>>) {
-    let rows = matrix.len();
-    if rows == 0 { return; }
-    let cols = matrix[0].len();
-
-    let mut pivot_row = 0;
-
-    for col in 0..cols {
-        if pivot_row >= rows { break; }
-
-        // 1. Pivot Selection
-        let mut max_row = pivot_row;
-        for i in (pivot_row + 1)..rows {
-            if matrix[i][col].abs() > matrix[max_row][col].abs() {
-                max_row = i;
-            }
-        }
-
-        if matrix[max_row][col].abs() < 1e-9 { continue; }
-
-        matrix.swap(pivot_row, max_row);
-
-        // 2. Normalize
-        let pivot_val = matrix[pivot_row][col];
-        for j in col..cols {
-            matrix[pivot_row][j] /= pivot_val;
-        }
-
-        // 3. Eliminate
-        for i in 0..rows {
-            if i != pivot_row {
-                let factor = matrix[i][col];
-                for j in col..cols {
-                    matrix[i][j] -= factor * matrix[pivot_row][j];
-                }
-            }
-        }
-        pivot_row += 1;
+fn get_combinations<T: Copy>(set: &[T], count: usize) -> Vec<Vec<T>> {
+    if count == 0 {
+        vec![Vec::new()]
+    } else {
+        set[..set.len() - count + 1]
+            .iter()
+            .enumerate()
+            .flat_map(|(i, &t)| {
+                get_combinations(&set[i + 1..], count - 1)
+                    .iter()
+                    .map(|c| {
+                        let mut c1 = c.clone();
+                        c1.push(t);
+                        c1
+                    })
+                    .collect::<Vec<Vec<T>>>()
+            })
+            .collect()
     }
 }
 
-fn convert_to_matrix(machine: &Machine) -> Vec<Vec<f64>> {
-    let num_rows = machine.target_joltage.len();
-    let num_buttons = machine.buttons_vec.len();
-
-    let mut matrix = vec![vec![0.0; num_buttons + 1]; num_rows];
-
-    for (col_idx, affected_counters) in machine.buttons_vec.iter().enumerate() {
-        for &row_idx in affected_counters {
-            if (row_idx as usize) < num_rows {
-                matrix[row_idx as usize][col_idx] = 1.0;
-            }
-        }
+fn subsets<T: Copy>(set: &[T]) -> Vec<Vec<T>> {
+    let mut subsets: Vec<Vec<T>> = Vec::new();
+    for count in 0..=set.len() {
+        subsets.extend(get_combinations(set, count));
     }
-
-    for (row_idx, &target) in machine.target_joltage.iter().enumerate() {
-        matrix[row_idx][num_buttons] = target as f64;
-    }
-
-    matrix
+    subsets
 }
 
-fn solve_recursive(
-    current_free_idx: usize,
-    free_cols: &Vec<usize>,
-    pivot_map: &Vec<(usize, usize)>,
-    current_solution: &mut Vec<f64>,
-    matrix: &Vec<Vec<f64>>,
-    min_presses: &mut Option<i64>
-) {
-    if current_free_idx == free_cols.len() {
-        let mut valid = true;
-
-        for &(row, col) in pivot_map {
-            let target = matrix[row].last().unwrap();
-            let mut val = *target;
-
-            for &fc in free_cols {
-                val -= matrix[row][fc] * current_solution[fc];
-            }
-
-            if val < -1e-5 || (val.round() - val).abs() > 1e-5 {
-                valid = false;
-                break;
-            }
-            current_solution[col] = val.round();
-        }
-
-        if valid {
-            let sum: i64 = current_solution.iter().map(|&x| x as i64).sum();
-            match min_presses {
-                None => *min_presses = Some(sum),
-                Some(min) => if sum < *min { *min_presses = Some(sum); }
-            }
-        }
-        return;
-    }
-
-    let col_idx = free_cols[current_free_idx];
-
-    for val in 0..=100 {
-        current_solution[col_idx] = val as f64;
-        solve_recursive(
-            current_free_idx + 1,
-            free_cols,
-            pivot_map,
-            current_solution,
-            matrix,
-            min_presses
-        );
-    }
+fn find_presses(machine: &Machine) -> usize {
+    let subset_xors: Vec<_> = subsets( &machine.buttons)
+        .iter()
+        .map(|subset| (subset.to_owned(), subset.iter().fold(0, |a, &b| a ^ b)))
+        .collect();
+    find_presses_r(&subset_xors, &machine.target_joltage).unwrap()
 }
 
-fn solve_system(mut matrix: Vec<Vec<f64>>) -> Option<i64> {
-    gaussian_elimination(&mut matrix);
-
-    let rows = matrix.len();
-    let cols = matrix[0].len();
-    let num_vars = cols - 1;
-
-    let mut pivot_cols = Vec::new();
-    let mut pivot_map = Vec::new();
-
-    for r in 0..rows {
-        if let Some(c) = matrix[r][0..num_vars].iter().position(|&x| (x - 1.0).abs() < 1e-5) {
-            pivot_cols.push(c);
-            pivot_map.push((r, c));
+fn find_presses_r(subset_xors: &[(Vec<u32>, u32)],joltages: &Vec<i32>) -> Option<usize> {
+    if joltages.iter().all(|&j| j == 0) {
+        return Some(0);
+    }
+    let binary_joltages = joltages
+                            .iter()
+                            .enumerate()
+                            .map(|(i, j)| ((1 << i) * (j % 2)) as u32)
+                            .sum();
+    let mut best = None;
+    for (subset, xor) in subset_xors {
+        if *xor == binary_joltages {
+            let mut mask = 1;
+            let mut new_joltages = Vec::new();
+            for &joltage in joltages {
+                new_joltages.push((joltage - subset.iter().filter(|&b| b & mask != 0).count() as i32) / 2);
+                mask <<= 1;
+            }
+            if new_joltages.iter().all(|&j| j >= 0) {
+                let press_count = find_presses_r(subset_xors, &new_joltages)
+                    .map(|c| subset.len() + 2 * c);
+                best = best.min(press_count).or(best).or(press_count);
+            }
         }
     }
-
-    let mut free_cols = Vec::new();
-    for c in 0..num_vars {
-        if !pivot_cols.contains(&c) {
-            free_cols.push(c);
-        }
-    }
-
-    let mut min_presses = None;
-    let mut current_solution = vec![0.0; num_vars];
-
-    solve_recursive(
-        0,
-        &free_cols,
-        &pivot_map,
-        &mut current_solution,
-        &matrix,
-        &mut min_presses
-    );
-
-    min_presses
+    best
 }
 
-// ###################
 
 pub fn part_2(input: String) -> i64 {
     let machines = parse(input);
 
     let mut sum = 0;
     for m in machines {
-        let matrix = convert_to_matrix(&m);
-
-        if let Some(presses) = solve_system(matrix) {
-            sum += presses;
-        }
+        let r = find_presses(&m);
+        sum += r;
     }
     sum as i64
 }
