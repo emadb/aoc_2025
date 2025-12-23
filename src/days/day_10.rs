@@ -168,18 +168,18 @@ fn find_presses(machine: &Machine) -> usize {
     find_presses_r(&xors, &machine.target_joltage).unwrap()
 }
 
-fn find_presses_r(subset_xors: &[(Vec<u32>, u32)], joltages: &Vec<i32>) -> Option<usize> {
+fn find_presses_r(xors: &[(Vec<u32>, u32)], joltages: &Vec<i32>) -> Option<usize> {
     if joltages.iter().all(|&j| j == 0) {
         return Some(0);
     }
-    let binary_joltages = joltages
+    let bj = joltages
         .iter()
         .enumerate()
         .map(|(i, j)| if j % 2 != 0 { 1 << i } else { 0 })
         .sum();
     let mut best = None;
-    for (subset, xor) in subset_xors {
-        if *xor == binary_joltages {
+    for (subset, xor) in xors {
+        if *xor == bj {
             let mut mask = 1;
             let mut new_joltages = Vec::new();
             for &joltage in joltages {
@@ -189,7 +189,7 @@ fn find_presses_r(subset_xors: &[(Vec<u32>, u32)], joltages: &Vec<i32>) -> Optio
             }
             if new_joltages.iter().all(|&j| j >= 0) {
                 let press_count =
-                    find_presses_r(subset_xors, &new_joltages).map(|c| subset.len() + 2 * c);
+                    find_presses_r(xors, &new_joltages).map(|c| subset.len() + 2 * c);
                 best = best.min(press_count).or(best).or(press_count);
             }
         }
